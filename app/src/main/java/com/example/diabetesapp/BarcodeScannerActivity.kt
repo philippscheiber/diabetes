@@ -5,7 +5,6 @@ package com.example.diabetesapp
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
-import android.util.Size
 import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -19,6 +18,10 @@ import com.google.mlkit.vision.common.InputImage
 import java.util.concurrent.Executors
 
 class BarcodeScannerActivity : ComponentActivity() {
+
+    companion object {
+        private const val REQUEST_CAMERA_PERMISSION = 123
+    }
 
     private val cameraExecutor = Executors.newSingleThreadExecutor()
     private lateinit var previewView: PreviewView
@@ -39,9 +42,29 @@ class BarcodeScannerActivity : ComponentActivity() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED
         ) {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), 123)
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.CAMERA),
+                REQUEST_CAMERA_PERMISSION
+            )
         } else {
             startCamera()
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_CAMERA_PERMISSION &&
+            grantResults.isNotEmpty() &&
+            grantResults[0] == PackageManager.PERMISSION_GRANTED
+        ) {
+            startCamera()
+        } else if (requestCode == REQUEST_CAMERA_PERMISSION) {
+            Toast.makeText(this, "Kameraberechtigung erforderlich", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -102,7 +125,6 @@ class BarcodeScannerActivity : ComponentActivity() {
                         runOnUiThread {
                             Toast.makeText(this, "Barcode erkannt: $rawValue", Toast.LENGTH_SHORT).show()
                         }
-                        imageProxy.close()
                         setResult(RESULT_OK)  // falls du zurück an MainActivity willst
                         finish()
                         return@addOnSuccessListener
@@ -110,10 +132,17 @@ class BarcodeScannerActivity : ComponentActivity() {
                 }
             }
             .addOnFailureListener {
-                imageProxy.close()
+                runOnUiThread {
+                    Toast.makeText(this, "Scan fehlgeschlagen", Toast.LENGTH_SHORT).show()
+                }
             }
             .addOnCompleteListener {
                 imageProxy.close()
             }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        cameraExecutor.shutdown()
     }
 }
