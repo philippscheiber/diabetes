@@ -3,9 +3,9 @@
 package com.example.diabetesapp
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
-import android.util.Size
 import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -26,7 +26,7 @@ class BarcodeScannerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Kamera-Vorschau aufziehena
+        // Vorschau-View einrichten
         previewView = PreviewView(this).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -35,40 +35,59 @@ class BarcodeScannerActivity : ComponentActivity() {
         }
         setContentView(previewView)
 
-        // Berechtigung prüfen
+        // Kamera-Permission prüfen oder anfordern
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED
         ) {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), 123)
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.CAMERA),
+                REQUEST_CODE_CAMERA
+            )
         } else {
             startCamera()
         }
     }
 
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_CODE_CAMERA &&
+            grantResults.isNotEmpty() &&
+            grantResults[0] == PackageManager.PERMISSION_GRANTED
+        ) {
+            startCamera()
+        } else {
+            Toast.makeText(this, "Kamera-Permission benötigt!", Toast.LENGTH_SHORT).show()
+            finish()
+        }
+    }
+
     private fun startCamera() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
-
         cameraProviderFuture.addListener({
             val cameraProvider = cameraProviderFuture.get()
 
-            // Preview-UseCase
+            // Preview Use-Case
             val preview = Preview.Builder()
                 .build()
                 .also { it.setSurfaceProvider(previewView.surfaceProvider) }
 
-            // Analysis-UseCase
+            // Analysis Use-Case
             val imageAnalysis = ImageAnalysis.Builder()
-                .setTargetAspectRatio(AspectRatio.RATIO_16_9) // statt deprecated setTargetResolution
+                .setTargetAspectRatio(AspectRatio.RATIO_16_9)
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
 
             val scanner = BarcodeScanning.getClient()
-
             imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
                 processImageProxy(imageProxy, scanner)
             }
 
-            // Lifecycle-Binding
+            // Kamera an Lifecycle binden
             cameraProvider.unbindAll()
             cameraProvider.bindToLifecycle(
                 this,
@@ -83,7 +102,7 @@ class BarcodeScannerActivity : ComponentActivity() {
         imageProxy: ImageProxy,
         scanner: com.google.mlkit.vision.barcode.BarcodeScanner
     ) {
-        // Hier greifst du weiter imageProxy.image ab – kein Warnfenster mehr wegen @Suppress oben
+        // imageProxy.image ist experimental, wird aber durch @file:Suppress geduldet
         val mediaImage = imageProxy.image
         if (mediaImage == null) {
             imageProxy.close()
@@ -97,13 +116,19 @@ class BarcodeScannerActivity : ComponentActivity() {
 
         scanner.process(inputImage)
             .addOnSuccessListener { barcodes ->
-                for (barcode in barcodes) {
+                barcodes.forEach { barcode ->
                     barcode.rawValue?.let { rawValue ->
-                        runOnUiThread {
-                            Toast.makeText(this, "Barcode erkannt: $rawValue", Toast.LENGTH_SHORT).show()
+                        // Rückgabe an MainActivity
+                        val data = Intent().apply {
+                            putExtra("EXTRA_BARCODE", rawValue)
                         }
+                        setResult(RESULT_OK, data)
+
+                        runOnUiThread {
+                            Toast.makeText(this, "Barcode: $rawValue", Toast.LENGTH_SHORT).show()
+                        }
+
                         imageProxy.close()
-                        setResult(RESULT_OK)  // falls du zurück an MainActivity willst
                         finish()
                         return@addOnSuccessListener
                     }
@@ -115,5 +140,9 @@ class BarcodeScannerActivity : ComponentActivity() {
             .addOnCompleteListener {
                 imageProxy.close()
             }
+    }
+
+    companion object {
+        private const val REQUEST_CODE_CAMERA = 123
     }
 }
