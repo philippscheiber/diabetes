@@ -41,11 +41,6 @@ import com.example.diabetesapp.ui.theme.DiabetesAppTheme
 import kotlinx.coroutines.launch
 import java.util.Calendar
 import androidx.compose.material3.Button
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
-import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Arrangement
 
 private enum class Screen { Calculation, Chart, Parameters }
