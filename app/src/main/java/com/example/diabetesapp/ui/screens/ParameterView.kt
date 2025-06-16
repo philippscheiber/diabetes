@@ -1,7 +1,9 @@
 package com.example.diabetesapp.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,14 +22,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import java.util.Calendar
 
 @Composable
 fun ParameterView(
@@ -38,13 +37,20 @@ fun ParameterView(
     ioB: String,
     onIoBChange: (String) -> Unit
 ) {
-    // sofort öffnender TDD-Dialog
-    var showTddCalc by rememberSaveable { mutableStateOf(true) }
-    var weight     by rememberSaveable { mutableStateOf("") }
-    var factor     by rememberSaveable { mutableStateOf("") }
-    var calcResult by rememberSaveable { mutableStateOf<String?>(null) }
-    // Info-Dialog für Faktor
-    var showFactorInfo by remember { mutableStateOf(false) }
+    // Zustand für Dialog-Anzeigen
+    var showTddCalc by rememberSaveable { mutableStateOf(false) }
+    var showIoBCalc by rememberSaveable { mutableStateOf(false) }
+    var showIoBInfo by remember { mutableStateOf(false) }
+
+    // Zwischenwerte für TDD-Berechnung
+    var weight by rememberSaveable { mutableStateOf("") }
+    var factor by rememberSaveable { mutableStateOf("") }
+    var calcTdd by rememberSaveable { mutableStateOf<String?>(null) }
+
+    // Zwischenwerte für IoB-Berechnung
+    var lastBolus by rememberSaveable { mutableStateOf("") }
+    var elapsedMin by rememberSaveable { mutableStateOf("") }
+    var calcIoB by rememberSaveable { mutableStateOf<String?>(null) }
 
     Column(
         modifier = Modifier
@@ -55,19 +61,23 @@ fun ParameterView(
     ) {
         Text("Parameter", style = MaterialTheme.typography.headlineSmall)
 
-        // TDD-Feld (read-only)
+        // TDD-Feld mit Berechnungs-Dialog
         OutlinedTextField(
             value = tdd,
-            onValueChange = { /* no-op */ },
-            readOnly = true,
+            onValueChange = { /* read-only */ },
             label = { Text("TDD (IE/Tag)") },
+            readOnly = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { showTddCalc = true },
             trailingIcon = {
-                Icon(Icons.Default.Calculate, contentDescription = "TDD berechnen")
-            },
-            modifier = Modifier.fillMaxWidth()
+                IconButton(onClick = { showTddCalc = true }) {
+                    Icon(Icons.Default.Calculate, contentDescription = "TDD berechnen")
+                }
+            }
         )
 
-        // Ziel-BZ
+        // Ziel-Blutzucker
         OutlinedTextField(
             value = targetBZ,
             onValueChange = onTargetChange,
@@ -75,23 +85,36 @@ fun ParameterView(
             modifier = Modifier.fillMaxWidth()
         )
 
-        // Insulin on Board
+        // IoB-Feld mit Info- und Berechnungs-Dialog
         OutlinedTextField(
             value = ioB,
-            onValueChange = onIoBChange,
+            onValueChange = { /* read-only */ },
             label = { Text("IoB (IE)") },
-            modifier = Modifier.fillMaxWidth()
+            readOnly = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { showIoBCalc = true },
+            trailingIcon = {
+                Row {
+                    IconButton(onClick = { showIoBInfo = true }) {
+                        Icon(Icons.Default.Info, contentDescription = "Was ist IoB?")
+                    }
+                    IconButton(onClick = { showIoBCalc = true }) {
+                        Icon(Icons.Default.Calculate, contentDescription = "IoB berechnen")
+                    }
+                }
+            }
         )
     }
 
-    // Dialog: TDD berechnen
+    // Dialog für TDD-Berechnung
     if (showTddCalc) {
         AlertDialog(
             onDismissRequest = { showTddCalc = false },
             title = { Text("TDD berechnen") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Gib dein Gewicht (kg) und den Faktor (IE/kg) ein:")
+                    Text("Gewicht (kg) und Faktor (IE/kg) eingeben:")
                     OutlinedTextField(
                         value = weight,
                         onValueChange = { weight = it },
@@ -102,67 +125,104 @@ fun ParameterView(
                     OutlinedTextField(
                         value = factor,
                         onValueChange = { factor = it },
-                        label = { Text("Faktor (IE/kg)") },
+                        label = { Text("Faktor (IE/kg), z. B. 0,6") },
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        trailingIcon = {
-                            IconButton(onClick = { showFactorInfo = true }) {
-                                Icon(Icons.Default.Info, contentDescription = "Faktor Info")
-                            }
-                        }
+                        modifier = Modifier.fillMaxWidth()
                     )
                     Button(
                         onClick = {
                             val w = weight.replace(',', '.').toDoubleOrNull() ?: 0.0
                             val f = factor.replace(',', '.').toDoubleOrNull() ?: 0.0
-                            calcResult = if (w > 0 && f > 0)
-                                String.format("%.1f", w * f)
-                            else
-                                "Fehler"
+                            calcTdd = if (w > 0 && f > 0) "%.1f".format(w * f) else "Fehler"
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Berechnen")
                     }
                     Spacer(modifier = Modifier.height(8.dp))
-                    calcResult?.let { result ->
-                        Text("Ergebnis: $result IE/Tag", style = MaterialTheme.typography.bodyLarge)
-                    }
+                    calcTdd?.let { Text("Ergebnis: $it IE/Tag", style = MaterialTheme.typography.bodyLarge) }
                 }
             },
             confirmButton = {
                 TextButton(onClick = {
-                    calcResult
-                        ?.takeIf { it != "Fehler" }
-                        ?.let(onTddChange)
+                    calcTdd?.takeIf { it != "Fehler" }?.let(onTddChange)
                     showTddCalc = false
                 }) {
                     Text("Übernehmen")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showTddCalc = false }) {
-                    Text("Abbrechen")
-                }
+                TextButton(onClick = { showTddCalc = false }) { Text("Abbrechen") }
             }
         )
     }
 
-    // Dialog: Faktor-Info
-    if (showFactorInfo) {
+    // Dialog für IoB-Berechnung
+    if (showIoBCalc) {
         AlertDialog(
-            onDismissRequest = { showFactorInfo = false },
-            title = { Text("Info zum Faktor") },
+            onDismissRequest = { showIoBCalc = false },
+            title = { Text("IoB berechnen") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Letzter Bolus (IE) und verstrichene Zeit (Minuten) eingeben:")
+                    OutlinedTextField(
+                        value = lastBolus,
+                        onValueChange = { lastBolus = it },
+                        label = { Text("Bolusmenge (IE)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = elapsedMin,
+                        onValueChange = { elapsedMin = it },
+                        label = { Text("Minuten seit Bolus") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Button(
+                        onClick = {
+                            val b = lastBolus.replace(',', '.').toDoubleOrNull() ?: 0.0
+                            val m = elapsedMin.toIntOrNull() ?: 0
+                            val dur = 240 // Wirkdauer: 4 Stunden
+                            val rem = ((dur - m).coerceAtLeast(0)) / dur.toFloat()
+                            calcIoB = "%.1f".format(b * rem)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Berechnen")
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    calcIoB?.let { Text("IoB: $it IE", style = MaterialTheme.typography.bodyLarge) }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    calcIoB?.let(onIoBChange)
+                    showIoBCalc = false
+                }) {
+                    Text("Übernehmen")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showIoBCalc = false }) { Text("Abbrechen") }
+            }
+        )
+    }
+
+    // Info-Dialog für IoB
+    if (showIoBInfo) {
+        AlertDialog(
+            onDismissRequest = { showIoBInfo = false },
+            title = { Text("Was ist Insulin-on-Board (IoB)?") },
             text = {
                 Text(
-                    "Der Insulin-pro-Kg-Faktor (IE/kg) wird individuell von deinem " +
-                            "Arzt festgelegt. Bitte verwende den dir mitgeteilten Wert."
+                    "Insulin-on-Board (IoB) sind die noch aktiven Insulineinheiten aus " +
+                            "vorherigen Bolusgaben (Wirkdauer ca. 4 Stunden). Sie helfen, Unterzucker " +
+                            "zu vermeiden, indem die Restwirkung beim nächsten Bolus berücksichtigt wird."
                 )
             },
             confirmButton = {
-                TextButton(onClick = { showFactorInfo = false }) {
-                    Text("Verstanden")
-                }
+                TextButton(onClick = { showIoBInfo = false }) { Text("Verstanden") }
             }
         )
     }
