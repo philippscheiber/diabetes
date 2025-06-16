@@ -101,4 +101,14 @@ dependencies {
 // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4")
 
+    // Damit du Zugriff auf Icons.Default.Schedule, Fastfood, CameraAlt etc. hast:
+    implementation("androidx.compose.material:material-icons-extended:1.5.0")
+
+    // Compose Navigation
+    implementation("androidx.navigation:navigation-compose:2.7.0")
+// evtl. für Charts (hier nur Canvas, keine extra Lib nötig)
+// Material Icons
+    implementation("androidx.compose.material:material-icons-extended:1.6.7")
+
+
 }
